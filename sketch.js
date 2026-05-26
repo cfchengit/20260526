@@ -3,6 +3,7 @@ let cwaData = null;
 let mergedData = [];
 let dataMerged = false;
 let dataError = false;
+let rainDrops = [];
 
 // Mappa.js 變數
 let mappa;
@@ -13,6 +14,11 @@ function setup() {
   // 採用全螢幕畫布
   canvas = createCanvas(windowWidth, windowHeight);
   
+  // 初始化雨滴 (用於天氣動畫)
+  for (let i = 0; i < 100; i++) {
+    rainDrops.push({ x: random(-40, 40), y: random(-20, 50), speed: random(3, 6) });
+  }
+
   // 初始化 Mappa (使用開源的 Leaflet 與 OpenStreetMap)
   mappa = new Mappa('Leaflet');
   let options = {
@@ -73,10 +79,56 @@ function draw() {
     mergeData();
   }
 
+  let panelWidth = 280;
+
   // 顯示標題
+  textAlign(CENTER, CENTER);
   textSize(24);
   fill(100, 200, 255);
-  text("台北市即時雨量地圖", width / 2, 50);
+  stroke(0);
+  strokeWeight(3);
+  // 將標題推移到面板右側的畫面正中央
+  text("台北市即時雨量地圖", panelWidth + (width - panelWidth) / 2, 50);
+
+  // 繪製左側面板 (站名列表)
+  fill(0, 180);
+  noStroke();
+  rectMode(CORNER);
+  rect(0, 0, panelWidth, height);
+
+  fill(255);
+  textAlign(LEFT, TOP);
+  textSize(18);
+  text("測站雨量列表", 20, 20);
+
+  let hoveredPanelStation = null;
+  let yPos = 60;
+  let xPos = 15;
+  textSize(14);
+  
+  for (let i = 0; i < mergedData.length; i++) {
+    let st = mergedData[i];
+    let rainVal = parseFloat(st.rain);
+
+    // 如果超出畫面高度，則換行顯示
+    if (yPos > height - 30) {
+      yPos = 60;
+      xPos += 130;
+    }
+
+    // 檢查滑鼠是否懸停在文字上方
+    let isHover = mouseX > xPos && mouseX < xPos + 120 && mouseY > yPos && mouseY < yPos + 18;
+    if (isHover) {
+      hoveredPanelStation = st;
+      fill(255, 255, 0); // 滑鼠移過面板文字時顯示黃色
+    } else {
+      // 依據雨量大小顯示不同顏色
+      fill(getRainColor(rainVal));
+    }
+
+    text(`${st.name}: ${st.rain}mm`, xPos, yPos);
+    yPos += 20;
+  }
   
   let hoveredStation = null;
   
@@ -84,25 +136,35 @@ function draw() {
   for (let st of mergedData) {
     // 將經緯度轉換為畫布上的像素座標
     let pos = myMap.latLngToPixel(st.lat, st.lon);
-    let radius = 8;
+    let rainVal = parseFloat(st.rain);
     
-    // 畫出紅色圓點
-    fill(255, 0, 0);
-    stroke(255);
-    strokeWeight(1.5);
-    ellipse(pos.x, pos.y, radius * 2, radius * 2);
+    let baseRadius = 8;
+    let isHovered = (hoveredPanelStation === st);
     
     // 計算滑鼠與圓點的距離，檢查是否懸停
     let d = dist(mouseX, mouseY, pos.x, pos.y);
-    if (d < radius) {
+    if (d < baseRadius) {
+      isHovered = true;
       hoveredStation = { st: st, pos: pos };
     }
+
+    // 被指到時加大直徑
+    let radius = isHovered ? 16 : baseRadius;
+    
+    // 依據雨量大小設定圓點顏色
+    fill(getRainColor(rainVal));
+
+    stroke(255);
+    strokeWeight(1.5);
+    ellipse(pos.x, pos.y, radius * 2, radius * 2);
   }
   
+  let currentHover = hoveredStation ? hoveredStation.st : hoveredPanelStation;
+
   // 如果有滑鼠碰觸到的測站，顯示資料框 (最後畫才不會被其他圓點蓋住)
-  if (hoveredStation) {
-    let st = hoveredStation.st;
-    let p = hoveredStation.pos;
+  if (currentHover) {
+    let st = currentHover;
+    let p = hoveredStation ? hoveredStation.pos : myMap.latLngToPixel(st.lat, st.lon);
     let infoText = `${st.name} : ${st.rain} mm`;
 
     textSize(16);
@@ -112,12 +174,121 @@ function draw() {
     fill(0, 200); // 黑色半透明底框
     noStroke();
     rectMode(CENTER);
-    rect(p.x, p.y - 25, tw + 20, th, 5); // 5 為邊框圓角
+    rect(p.x, p.y - 30, tw + 20, th, 5); // 5 為邊框圓角
 
     fill(255);
     textAlign(CENTER, CENTER);
-    text(infoText, p.x, p.y - 25);
+    text(infoText, p.x, p.y - 30);
   }
+
+  // 繪製右上角天氣效果
+  drawWeatherEffect(currentHover);
+
+  // 繪製降雨量圖示面板 (Legend)
+  drawLegend();
+}
+
+function drawWeatherEffect(hoveredSt) {
+  let isRaining = false;
+  let rainAmount = 0;
+  
+  if (hoveredSt) {
+    rainAmount = parseFloat(hoveredSt.rain);
+    isRaining = rainAmount > 0;
+  } else {
+    // 若沒有懸停特定測站，判斷全市是否下雨
+    isRaining = mergedData.some(st => parseFloat(st.rain) > 0);
+    rainAmount = 2; // 預設雨量大小
+  }
+
+  push();
+  translate(width - 80, 80);
+
+  if (isRaining) {
+    // 畫雲
+    fill(150);
+    noStroke();
+    ellipse(0, 0, 60, 40);
+    ellipse(-20, 10, 50, 30);
+    ellipse(20, 10, 50, 30);
+
+    // 依據雨量調整雨滴數量與速度
+    let dropCount = min(rainDrops.length, map(rainAmount, 0, 50, 10, rainDrops.length));
+    
+    // 畫雨滴
+    stroke(150, 200, 255);
+    strokeWeight(2);
+    for(let i = 0; i < dropCount; i++) {
+      let drop = rainDrops[i];
+      line(drop.x, drop.y, drop.x, drop.y + 10);
+      drop.y += drop.speed + map(rainAmount, 0, 50, 0, 10);
+      if (drop.y > 60) drop.y = random(-20, 10);
+    }
+  } else {
+    // 畫太陽
+    fill(255, 204, 0);
+    noStroke();
+    push();
+    rotate(frameCount * 0.01);
+    for(let i = 0; i < 8; i++) {
+      rotate(TWO_PI / 8);
+      triangle(-5, 25, 5, 25, 0, 45);
+    }
+    pop();
+    ellipse(0, 0, 50, 50);
+  }
+  pop();
+}
+
+function drawLegend() {
+  let panelW = 180;
+  let panelH = 190;
+  let startX = width - panelW - 20; 
+  let startY = height - panelH - 20;
+
+  fill(0, 180);
+  noStroke();
+  rectMode(CORNER);
+  rect(startX, startY, panelW, panelH, 8);
+
+  fill(255);
+  textAlign(LEFT, TOP);
+  textSize(16);
+  noStroke();
+  text("10分鐘降雨量標示", startX + 15, startY + 15);
+
+  // 定義六個雨量級距說明與對應數值(用於取得顏色)
+  let categories = [
+    { label: "0 mm (無雨)", val: 0 },
+    { label: "0.1 - 2.0 mm", val: 1 },
+    { label: "2.1 - 5.0 mm", val: 3 },
+    { label: "5.1 - 10.0 mm", val: 6 },
+    { label: "10.1 - 15.0 mm", val: 11 },
+    { label: "> 15.0 mm", val: 20 }
+  ];
+
+  textSize(14);
+  for (let i = 0; i < categories.length; i++) {
+    let y = startY + 45 + i * 22;
+    fill(getRainColor(categories[i].val));
+    stroke(0);
+    strokeWeight(1);
+    ellipse(startX + 25, y + 6, 12, 12);
+
+    fill(255);
+    noStroke();
+    text(categories[i].label, startX + 40, y);
+  }
+}
+
+// 新增：雨量顏色對映邏輯 (6個分類)
+function getRainColor(rainVal) {
+  if (rainVal === 0) return color(135, 206, 235); // 天空藍 (0mm)
+  if (rainVal <= 2) return color(144, 238, 144);  // 淺綠色
+  if (rainVal <= 5) return color(255, 255, 0);    // 黃色
+  if (rainVal <= 10) return color(255, 165, 0);   // 橘色
+  if (rainVal <= 15) return color(255, 50, 50);   // 紅色
+  return color(150, 50, 200);                     // 紫色 (>15mm)
 }
 
 // 將台北市雨量資料與氣象署的經緯度資料進行比對合併
