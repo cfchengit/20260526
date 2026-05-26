@@ -4,6 +4,7 @@ let mergedData = [];
 let dataMerged = false;
 let dataError = false;
 let rainDrops = [];
+let dataTime = "";
 
 // Mappa.js 變數
 let mappa;
@@ -101,8 +102,15 @@ function draw() {
   textSize(18);
   text("測站雨量列表", 20, 20);
 
+  // 顯示資料更新時間
+  if (dataTime !== "") {
+    textSize(14);
+    fill(200); // 稍微暗一點的文字顏色區分標題
+    text(`更新時間: ${dataTime}`, 20, 45);
+  }
+
   let hoveredPanelStation = null;
-  let yPos = 60;
+  let yPos = 70; // 稍微往下推移，讓出空間給時間文字
   let xPos = 15;
   textSize(14);
   
@@ -112,7 +120,7 @@ function draw() {
 
     // 如果超出畫面高度，則換行顯示
     if (yPos > height - 30) {
-      yPos = 60;
+      yPos = 70;
       xPos += 130;
     }
 
@@ -297,6 +305,12 @@ function mergeData() {
   let cwaStations = (cwaData && cwaData.records) ? (cwaData.records.Station || cwaData.records.location || []) : [];
 
   if (Array.isArray(taipeiStations)) {
+    // 嘗試抓取資料的第一筆時間，作為全市的更新時間顯示
+    if (taipeiStations.length > 0) {
+      let first = taipeiStations[0];
+      dataTime = first.recTime || first.ObsTime || first.time || first.datetime || "未知時間";
+    }
+
     for (let ts of taipeiStations) {
       let name = ts.stationName || ts.StationName || ts.name || "";
       let rainVal = ts.rain10mins || ts.Rain10mins || ts.rain || ts.rainfall || "0";
