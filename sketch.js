@@ -301,6 +301,9 @@ function getRainColor(rainVal) {
 
 // 將台北市雨量資料與氣象署的經緯度資料進行比對合併
 function mergeData() {
+  // 清空舊有的合併資料，避免重新抓取後地圖上的圓點重複疊加
+  mergedData = [];
+
   let taipeiStations = rainData.data || rainData;
   let cwaStations = (cwaData && cwaData.records) ? (cwaData.records.Station || cwaData.records.location || []) : [];
 
